@@ -1,0 +1,21 @@
+<header>
+<div class="container">
+    <nav class="navbar">
+        <div class="logo">
+            <i class="fas fa-cat"></i>
+                <span>Котики & Ко</span>
+        </div>
+
+        <ul class="nav-links">
+            {% for menu_item in menu_list %}
+                {% if menu_item.parametr %}
+                    <li><a href="{% url menu_item.base_url menu_item.parametr %}">{{menu_item.name}}</a></li>
+                {% else %}
+                    <li><a href="{% url menu_item.base_url %}">{{menu_item.name}}</a></li>
+                {% endif %}
+            {% endfor %}
+        </ul>
+    </nav>
+</div>
+</header>
+    
