@@ -1,0 +1,231 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+    {% include "components/header.html" %}
+    <div class="dashboard-grid">
+        <section class="panel stats">
+            <div class="panel-header">>> Метрики:</div>
+            <div class="stat-row">
+                <span>Ежемесячные расходы:</span>
+                {% if monthly_total_by_currency %}
+                    {% for currency, total in monthly_total_by_currency.items %}
+                        <div>
+                            {{ currency }}: {{ total|floatformat:2 }}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p>Нет активных подписок или расчет невозможен.</p>
+                {% endif %}
+            </div>
+            <div class="stat-row">
+                <span>Активных подписок:</span>
+                <span class="value">{{ active_subscriptions }}</span>
+            </div>
+            <div style="margin: 4rem 0; background: var(--bg-panel); padding: 2.5rem; border-radius: 8px; border: 1px solid var(--border); height: 320px;">
+                <h3 style="margin-bottom: 1rem; ">Расходы по месяцам (последний год)</h3>
+                <canvas id="monthlyExpensesChart"></canvas>
+            </div>    
+        </section>
+    </div>
+        <div style="margin: 1.5rem 0; text-align: left;">
+            <a href="{% url 'pages:add_subscription' %}" class="btn-retro full-width" style="max-width: 220px; display: inline-block; text-align: center;">
+                + НОВАЯ ПОДПИСКА
+            </a>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Статус</th>
+                        <th>Название сервиса</th>
+                        <th>Стоимость</th>
+                        <th>Период</th>
+                        <th>Следующая оплата</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for sub in subscriptions %}
+                <tr class="{% if sub.days_until_next_payment is not None and sub.days_until_next_payment <= 3 %}urgent-row{% endif %}">
+                    <td>
+                        {% if sub.is_active %}
+                            <span class="status-active">● ACTIVE</span>
+                        {% else %}
+                            <span class="status-inactive">○ INACTIVE</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <strong>{{ sub.name }}</strong><br>
+                        {% if sub.note %}
+                            <small class="dimmed">{{ sub.note }}</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ sub.get_price_display }}</td>
+                    <td>
+                        {% if sub.period == 'monthly' %}
+                            Ежемесячно
+                        {% elif sub.period == 'quarterly' %}
+                            Раз в 3 мес
+                        {% elif sub.period == 'semi_annual' %}
+                            Раз в 6 мес
+                        {% elif sub.period == 'annual' %}
+                            Раз в год
+                        {% elif sub.period == 'one_time' %}
+                            Однократный
+                        {% endif %}
+                    </td>
+                    <td class="{% if sub.days_until_next_payment is not None and sub.days_until_next_payment <= 3 %}urgent-text{% endif %}">
+                        {{ sub.next_payment_date }} <br>
+                        <small class="dimmed">
+                            {% with days=sub.days_until_next_payment %}
+                                {% if days is not None %}
+                                    {% if days > 0 %}
+                                        Осталось {{ days }} дней
+                                    {% elif days == 0 %}
+                                        Сегодня
+                                    {% else %}
+                                        Просрочена
+                                    {% endif %}
+                                {% endif %}
+                            {% endwith %}
+                        </small>
+                    </td>
+                    <td>
+                        <button class="action-btn-active" data-subscription-id="{{ sub.id }}">⏯</button>
+                        <a href="{% url 'pages:subscription_edit' sub.id %}" class="action-btn" title="Редактировать подписку">✎</a>
+                        <form method="post" action="{% url 'pages:subscription_delete' sub.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="action-btn" onclick="return confirm('Вы уверены, что хотите удалить подписку?');">✖</button>
+                        </form>
+                        {% if sub.is_active %}
+                        <button class="action-btn-paid"
+                                data-subscription-id="{{ sub.id }}"
+                                title="Подтвердить, что оплата произведена">
+                            💳
+                        </button>
+    {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6">Нет подписок</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>  
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = '{{ csrf_token }}'; 
+
+    document.querySelectorAll('.action-btn-active').forEach(function(button) {
+        button.addEventListener('click', function() {
+            console.log("click")
+            const subId = this.dataset.subscriptionId;
+
+            fetch(`/deactivate_subscription/${subId}/`, {
+                method: 'POST',
+                headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                location.reload();
+                } else {
+                alert('Ошибка при деактивации подписки');
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
+            });
+        });
+    });
+});
+
+document.querySelectorAll('.action-btn-paid').forEach(function(button) {
+    button.addEventListener('click', function() {
+        const subId = this.dataset.subscriptionId;
+        
+        if (!confirm('Подтвердить оплату? Дата следующей оплаты будет обновлена.')) {
+            return;
+        }
+
+        const csrfToken = '{{ csrf_token }}';
+
+        fetch(`/confirm-payment/${subId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Ошибка сервера');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error || 'Не удалось подтвердить оплату');
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка:', error);
+            alert('Произошла ошибка при подтверждении');
+        });
+    });
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const ctx = document.getElementById('monthlyExpensesChart').getContext('2d');
+    
+    const chartData = {
+        labels: {{ monthly_chart.labels|safe }},
+        datasets: [{
+            label: 'Расходы, {{ monthly_chart.currency }}',
+            data: {{ monthly_chart.data|safe }},
+            backgroundColor: 'rgba(56, 189, 248, 0.65)',
+            borderColor: 'rgba(56, 189, 248, 1)',
+            borderWidth: 1,
+            borderRadius: 4,
+        }]
+    };
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: true, labels: { color: '#94a3b8'} },
+                title: { display: false }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                    ticks: { color: '#94a3b8' }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                    ticks: {
+                        color: '#94a3b8',
+                        callback: function(value) { return value.toLocaleString() + ' ₽'; }
+                    }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock content %}

@@ -1,3 +1,5 @@
+
+
 def header_data(request):
     menu_list = [
         {
@@ -19,8 +21,8 @@ def header_data(request):
             'name': "Контакты",
             'base_url': 'pages:contacts',
             'parametr': ''
-        },   
-    ]
-
-    return {'menu_list': menu_list}    
+        },
         
+    ]
+    
+    return {'menu_list': menu_list}
